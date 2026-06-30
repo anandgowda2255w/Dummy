@@ -36,6 +36,7 @@ MANUFACTURING_KEYWORDS = [
     "milling", "center", "surface", "grinder", "assembly", "line",
     # Synonyms per spec
     "breakdown", "stoppage", "idle", "failure",
+    "running",
     "equipment", "effectiveness", "service", "servicing", "repair",
     "inspection", "health", "reject", "report", "status",
     "overview", "manufacturing",
@@ -52,6 +53,7 @@ INTENT_FUNCTION_PATTERNS = [
     ("get_downtime_analytics", [
         r"\bdowntime\b", r"\bbreakdown\b", r"\bfailure\b",
         r"\bidle\b", r"\bstop(?:page|ped|s)?\b",
+        r"\bnot\s+running\b", r"\bwas(?:\s+\w+){0,3}\s+not\s+running\b",
     ]),
     ("get_maintenance_recommendation", [
         r"\bmaintenance\b", r"\brecommendation\b", r"\bpreventive\b",
@@ -258,8 +260,27 @@ MACHINE_STOPWORDS = {
     "maintenance", "recommendation", "preventive", "urgent", "schedule",
     "production", "output", "summary", "rejection", "reject", "scrap",
     "defect", "compare", "comparison", "vs", "versus", "machine",
-    "start", "end", "date", "range",
+    "start", "end", "date", "range", "why", "was", "were", "is", "not",
+    "running", "run",
+    "plant", "factory", "overall", "complete", "dataset", "all", "machines",
+    "entire", "whole", "wide",
 }
+
+PLANT_SCOPE_PATTERNS = [
+    r"\bplant\b",
+    r"\bfactory\b",
+    r"\boverall\b",
+    r"\bcomplete\s+dataset\b",
+    r"\ball\s+machines?\b",
+    r"\bentire\s+plant\b",
+    r"\bwhole\s+plant\b",
+    r"\bfactory\s+wide\b",
+    r"\bplant[-\s]?wide\b",
+]
+
+
+def _has_plant_scope(user_query: str) -> bool:
+    return any(re.search(pattern, user_query, re.IGNORECASE) for pattern in PLANT_SCOPE_PATTERNS)
 
 
 def _detect_function_from_query(user_query: str) -> str | None:
@@ -379,6 +400,10 @@ def _deterministic_extract(user_query: str) -> dict | None:
 
     args = _extract_dates_from_query(user_query)
     machines = extract_machine_mentions(user_query, max_count=2)
+    plant_scope = _has_plant_scope(user_query)
+
+    if plant_scope:
+        machines = []
 
     if function_name == "compare_machine_analytics":
         args["machine1"] = machines[0] if len(machines) >= 1 else None

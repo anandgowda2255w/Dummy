@@ -35,6 +35,9 @@ _MACHINE_NAME_KEYWORDS = [
 
 MACHINE_SIGNALS = [
     r"\bm\d{3}\b",             # M001, m005, etc.
+    r"\bcnc\s*\d+\b",
+    r"\bdrill\s*\d+\b",
+    r"\blathe\s*\d+\b",
     r"\bfor\s+m\d{3}\b",
     r"\bof\s+m\d{3}\b",
     r"\bspecific\s+machine\b",
@@ -55,8 +58,13 @@ PLANT_SIGNALS = [
     r"\ball machines?\b",
     r"\bplant.?wide\b",
     r"\bplant\b",
+    r"\bfactory\b",
     r"\ball\b",
     r"\boverall\b",
+    r"\bcomplete\s+dataset\b",
+    r"\bentire\s+plant\b",
+    r"\bwhole\s+plant\b",
+    r"\bfactory\s+wide\b",
     r"\bevery machine\b",
     r"\bplant-wide\b",
     r"\bplant\s+production\b",        # "Plant Production Summary"

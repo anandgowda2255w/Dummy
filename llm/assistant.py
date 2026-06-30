@@ -22,6 +22,7 @@ import time
 from llm.function_selector import (
     select_function,
     extract_machine_mentions,
+    _has_plant_scope,
     GIBBERISH_REPLY,
     INCOMPLETE_REPLY,
 )
@@ -123,6 +124,18 @@ RECOMMENDATIONS = {
 
 FOLLOW_UPS: dict = {}  # Follow-up Actions removed per spec §10
 
+SCOPE_SELECTION_TYPES = {
+    "get_downtime_analytics": "downtime",
+    "get_rejection_analytics": "rejection",
+    "get_production_summary": "production",
+}
+
+SCOPE_LABELS = {
+    "downtime": "Downtime",
+    "rejection": "Rejection",
+    "production": "Production",
+}
+
 
 # -------------------------------------------------------
 # CONSOLE LOGGING — AI FUNCTION SELECTION  (Req #13)
@@ -190,6 +203,42 @@ def get_missing_machine_params(function_name, arguments):
 def get_missing_date_params(function_name, arguments):
     required = REQUIRED_PARAMS.get(function_name, [])
     return [p for p in required if p in DATE_PARAMS and not arguments.get(p)]
+
+
+def _requires_scope_selection(function_name, user_query, arguments):
+    """
+    Broad downtime/rejection/production requests need a plant-vs-machine
+    choice before backend function selection is considered final.
+    """
+    if function_name not in SCOPE_SELECTION_TYPES:
+        return False
+    if _has_plant_scope(user_query):
+        return False
+    return not any(arguments.get(p) for p in MACHINE_PARAMS)
+
+
+def _scope_selection_response(function_name, arguments):
+    selection_type = SCOPE_SELECTION_TYPES[function_name]
+    label = SCOPE_LABELS.get(selection_type, "Analysis")
+    pending_state = {
+        "selection_required": True,
+        "selection_type": selection_type,
+        "function": None,
+        "arguments": arguments,
+    }
+    return {
+        "intent": "manufacturing",
+        "reply": f"Please select the {label} analysis type.",
+        "needs_params": True,
+        "needs_machine": False,
+        "needs_dates": False,
+        "missing_machine_params": [],
+        "pending_state": pending_state,
+        "arguments": arguments,
+        "recommendations": [],
+        "follow_ups": [],
+        "error": False,
+    }
 
 
 # -------------------------------------------------------
@@ -278,7 +327,11 @@ def _resolve_machine_params(function_name, arguments, user_query):
         if machine_id:
             resolved[param] = machine_id
         elif candidates:
-            names = "\n".join(f"• {c['machine_name']}" for c in candidates)
+            resolved[param] = None
+            names = "\n".join(
+                f"{idx}. {c['machine_name']} ({c['machine_id']})"
+                for idx, c in enumerate(candidates, start=1)
+            )
             return resolved, (
                 f"I found multiple machines matching **{raw_val}**. "
                 f"Please select one:\n\n{names}"
@@ -688,6 +741,9 @@ def process_query(user_query, chat_history=None, pending_state=None):
 
     print(f"\nEXTRACTED PARAMETERS (resolved):\n{arguments}")
 
+    if _requires_scope_selection(function_name, user_query, arguments):
+        return _scope_selection_response(function_name, arguments)
+
     # VALIDATION PRIORITY (spec §2):
     # 1+2+3+4. Validate dates (format, range, logical order) BEFORE asking for missing params
     validation_error = _validate_params(arguments, db_range)
@@ -812,6 +868,44 @@ def _needs_params_response(function_name, arguments, missing_machine, missing_da
 # -------------------------------------------------------
 
 def _execute_and_respond(function_name, arguments):
+    missing_machine = get_missing_machine_params(function_name, arguments)
+    missing_dates = get_missing_date_params(function_name, arguments)
+    missing_all = get_missing_params(function_name, arguments)
+    if missing_all:
+        return _needs_params_response(function_name, arguments, missing_machine, missing_dates)
+
+    db_range = get_db_date_range()
+    validation_error = _validate_params(arguments, db_range)
+    if validation_error:
+        return {
+            "intent": "manufacturing",
+            "reply": f"⚠️ {validation_error}",
+            "needs_params": False,
+            "needs_machine": False,
+            "needs_dates": False,
+            "missing_machine_params": [],
+            "pending_state": None,
+            "arguments": arguments,
+            "recommendations": [],
+            "follow_ups": [],
+            "error": True,
+        }
+
+    machine_error = _validate_machine_existence(function_name, arguments)
+    if machine_error:
+        return {
+            "intent": "manufacturing",
+            "reply": f"⚠️ {machine_error}",
+            "needs_params": False,
+            "needs_machine": False,
+            "needs_dates": False,
+            "missing_machine_params": [],
+            "pending_state": None,
+            "arguments": arguments,
+            "recommendations": [],
+            "follow_ups": [],
+            "error": True,
+        }
     # Req #13 — log selected function and parameters to console before execution
     _log_function_selection(function_name, arguments)
 

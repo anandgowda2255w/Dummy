@@ -31,23 +31,23 @@ STATIC_ALIASES: dict[str, str] = {
     "cnc lathe1":        "M001",
     "cnc machine 1":     "M001",
     "cnc1":              "M001",
+    "cnc 1":             "M001",
+    "lathe 1":           "M001",
 
     # M002 — CNC Lathe 2
     "cnc lathe 2":       "M002",
     "cnc lathe2":        "M002",
     "cnc machine 2":     "M002",
     "cnc2":              "M002",
+    "cnc 2":             "M002",
+    "lathe 2":           "M002",
 
     # M003 — Hydraulic Lathe
     "hydraulic lathe":   "M003",
-    "lathe machine 1":   "M003",
-    "lathe 1":           "M003",
     "hydraulic lathe 1": "M003",
 
     # M004 — Precision Lathe
     "precision lathe":   "M004",
-    "lathe machine 2":   "M004",
-    "lathe 2":           "M004",
     "precision lathe 1": "M004",
 
     # M005 — Drill Press 1

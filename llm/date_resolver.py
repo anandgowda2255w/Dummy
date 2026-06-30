@@ -112,21 +112,43 @@ def _extract_explicit_dates(text: str) -> list[str]:
     """Extract and normalise all explicit dates in text → YYYY-MM-DD list."""
     results = []
 
-    # YYYY-MM-DD
-    for m in re.finditer(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", text):
-        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    def add_date(year, month, day):
         try:
-            results.append(str(datetime.date(y, mo, d)))
+            value = str(datetime.date(int(year), int(month), int(day)))
         except ValueError:
-            pass
+            return
+        if value not in results:
+            results.append(value)
+
+    # YYYY-MM-DD or YYYY/MM/DD
+    for m in re.finditer(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", text):
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        add_date(y, mo, d)
 
     # DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY
     for m in re.finditer(r"\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\b", text):
         d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        try:
-            results.append(str(datetime.date(y, mo, d)))
-        except ValueError:
-            pass
+        add_date(y, mo, d)
+
+    month_pattern = "|".join(MONTH_NAMES.keys())
+
+    # April 5 2026 / April 5, 2026
+    for m in re.finditer(
+        rf"\b({month_pattern})\s+(\d{{1,2}})(?:st|nd|rd|th)?[,]?\s+(\d{{4}})\b",
+        text,
+        re.IGNORECASE,
+    ):
+        mo = MONTH_NAMES[m.group(1).lower()]
+        add_date(m.group(3), mo, m.group(2))
+
+    # 5 April 2026 / 5th April 2026
+    for m in re.finditer(
+        rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_pattern})[,]?\s+(\d{{4}})\b",
+        text,
+        re.IGNORECASE,
+    ):
+        mo = MONTH_NAMES[m.group(2).lower()]
+        add_date(m.group(3), mo, m.group(1))
 
     return results
 
@@ -147,6 +169,10 @@ def resolve_dates(text: str, db_min: str, db_max: str) -> dict | None:
     for pat in COMPLETE_DATASET_PATTERNS:
         if re.search(pat, text_l):
             return {"start_date": db_min, "end_date": db_max}
+
+    explicit_dates = _extract_explicit_dates(text)
+    if len(explicit_dates) >= 2:
+        return {"start_date": explicit_dates[0], "end_date": explicit_dates[1]}
 
     # 2. "This month" / "current month"
     #    → the month that contains db_min (i.e. the first month of the dataset)
@@ -220,11 +246,8 @@ def resolve_dates(text: str, db_min: str, db_max: str) -> dict | None:
         return {"start_date": str(first), "end_date": str(last)}
 
     # 6. Explicit date formats
-    dates = _extract_explicit_dates(text)
-    if len(dates) == 2:
-        return {"start_date": dates[0], "end_date": dates[1]}
-    if len(dates) == 1:
-        return {"start_date": dates[0], "end_date": dates[0]}
+    if len(explicit_dates) == 1:
+        return {"start_date": explicit_dates[0], "end_date": explicit_dates[0]}
 
     return None
 
